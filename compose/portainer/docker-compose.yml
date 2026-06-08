@@ -1,0 +1,22 @@
+networks:
+  portainer:
+    name: portainer_net
+    driver: bridge
+
+services:
+
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - portainer_data:/data
+    ports:
+      - "9443:9443"
+    networks:
+      - portainer
+      
+volumes:
+  portainer_data:
+    name: portainer_data

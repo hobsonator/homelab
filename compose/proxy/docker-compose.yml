@@ -1,0 +1,54 @@
+services:
+
+  nginx-proxy-manager:
+    image: 'jc21/nginx-proxy-manager:latest'
+    container_name: nginx-proxy-manager
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+      - '81:81'
+    volumes:
+      - /opt/docker/npm/data:/data
+      - /opt/docker/npm/letsencrypt:/etc/letsencrypt
+
+  fail2ban:
+    image: lscr.io/linuxserver/fail2ban:latest
+    container_name: fail2ban
+    cap_add:
+      # Required for fail2ban container: Allows to manage network interfaces and iptables from the container
+      - NET_ADMIN
+      # Required for fail2ban container: Allows to create raw sockets (needed for fail2ban.sock)
+      - NET_RAW
+      # Required for fail2ban container: Allows to run as root (needed to manage network interfaces and raw sockets)
+      - SYS_ADMIN
+    #privileged: true
+    network_mode: host # needed to add iptables rules to the host network
+    environment:
+      - TZ=Australia/Sydney
+      - VERBOSITY=-vv
+    volumes:
+      # Fail2ban config directory
+      - /opt/docker/f2b/fail2ban-config:/config
+      # Fail2ban socket directory (shared with UI)
+      - /opt/docker/f2b/f2b-run:/var/run/fail2ban
+      # NPM logs mounted where Fail2ban expects them
+      - /opt/docker/npm/data/logs:/var/log/npm:ro
+
+  fail2ban-ui:
+    # Use pre-built image from Docker Hub (default)
+    image: swissmakers/fail2ban-ui:latest
+    container_name: fail2ban-ui
+    privileged: true # needed because the fail2ban-ui container needs to modify the fail2ban config owned by root inside the linuxserver-fail2ban container
+    network_mode: host
+    environment:
+      - PORT=3080
+    volumes:
+      # Fail2ban-UI internal config (SQLite DB, UI settings)
+      - /opt/docker/f2b-ui:/config
+      # NPM logs for logpath validation
+      - /opt/docker/npm/data/logs:/var/log/npm:ro
+      # Fail2ban config directory (shared)
+      - /opt/docker/f2b/fail2ban-config/fail2ban:/etc/fail2ban
+      # Fail2ban socket directory (shared)
+      - /opt/docker/f2b/f2b-run:/var/run/fail2ban

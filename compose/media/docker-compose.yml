@@ -1,0 +1,238 @@
+networks:
+  media:
+    name: media_net
+    driver: bridge
+
+services:
+
+  jellyfin:
+    image: jellyfin/jellyfin
+    container_name: jellyfin
+    restart: unless-stopped
+    environment:
+      - JELLYFIN_PublishedServerUrl=${JELLYFIN_PublishedServerUrl}
+    volumes:
+     - /opt/docker/jellyfin/config:/config
+     - /opt/docker/jellyfin/cache:/cache
+     - /mnt/data:/data:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8096/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    ports:
+      - "8096:8096"
+    networks:
+      - media
+
+  # --- Behind VPN Network Namespace ---
+
+  gluetun:
+    image: qmcgaw/gluetun
+    container_name: gluetun
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    volumes:
+      - /opt/docker/gluetun:/gluetun
+    environment:
+      - TZ=Australia/Sydney    
+      - OPENVPN_USER=${OPENVPN_USER}           # Replace with your PIA username
+      - OPENVPN_PASSWORD=${OPENVPN_PASSWORD}   # Replace with your PIA password
+      - SERVER_REGIONS=AU Melbourne            # Make sure the chosen region supports port forwarding
+      - VPN_PORT_FORWARDING=on
+      - PORT_FORWARD_ONLY=true    
+      - HTTP_CONTROL_SERVER_AUTH_DEFAULT_ROLE={"auth":"apikey","apikey":"${GLUETUN_API_KEY}"}
+    healthcheck:
+      test: ping -c 1 www.google.com || exit 1
+      interval: 20s
+      timeout: 10s
+      retries: 3
+    ports:
+      - "8080:8080" # qbittorrent via gluetun
+      - "9696:9696" # prowlarr via gluetun
+    networks:
+      - media
+
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    restart: unless-stopped
+    labels:
+      - deunhealth.restart.on.unhealthy=true
+    network_mode: "service:gluetun"
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Australia/Sydney
+    volumes:
+      - /opt/docker/qbittorrent:/config
+      - /mnt/data:/data
+    depends_on:
+      gluetun:
+        condition: service_healthy
+
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    restart: unless-stopped
+    network_mode: "service:gluetun"
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Australia/Sydney
+    volumes:
+      - /opt/docker/prowlarr:/config
+
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    restart: unless-stopped
+    network_mode: "service:gluetun"
+    environment:
+      - LOG_LEVEL=info
+      - LOG_FILE=none
+      - LOG_HTML=true
+      - CAPTCHA_SOLVER=none
+      - TZ=Australia/Sydney
+
+  gluetun-webui:
+    image: scuzza/gluetun-webui:latest
+    container_name: gluetun-ui
+    restart: unless-stopped
+    environment:
+      - GLUETUN_CONTROL_URL=http://gluetun:8000
+      - GLUETUN_API_KEY=${GLUETUN_API_KEY}
+    ports:
+      - "3001:3000"
+    networks:
+      - media
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    restart: unless-stopped
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Australia/Sydney
+    volumes:
+      - /opt/docker/sonarr:/config
+      - /mnt/data:/data
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8989"]
+      interval: 20s
+      timeout: 10s
+      retries: 3
+    ports:
+      - "8989:8989"
+    networks:
+      - media
+
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    restart: unless-stopped
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Australia/Sydney
+    volumes:
+      - /opt/docker/radarr:/config
+      - /mnt/data:/data
+    ports:
+      - "7878:7878"
+    networks:
+      - media
+
+  seerr:
+    image: ghcr.io/seerr-team/seerr:latest
+    init: true
+    container_name: seerr
+    restart: unless-stopped
+    environment:
+      - LOG_LEVEL=debug
+      - PUID=1000
+      - PGID=1000
+      - TZ=Australia/Sydney
+      - PORT=5055 
+    volumes:
+      - /opt/docker/seerr:/app/config
+      # sudo mkdir /opt/docker/seerr
+      # sudo chown -R 1000:1000 /opt/docker/seerr
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://localhost:5055/api/v1/settings/public || exit 1
+      start_period: 20s
+      timeout: 3s
+      interval: 15s
+      retries: 3
+    ports:
+      - "5055:5055"
+    networks:
+      - media
+
+  jellystat-db:
+    image: postgres:15.2
+    container_name: jellystat-db
+    restart: unless-stopped
+    shm_size: "1gb"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - /opt/docker/jellystat/postgres:/var/lib/postgresql/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    networks:
+      - media
+
+  jellystat:
+    image: cyfershepard/jellystat:latest
+    container_name: jellystat
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_IP=jellystat-db
+      - POSTGRES_PORT=5432
+      - JWT_SECRET=jfstat
+      - TZ=Australia/Sydney
+    volumes:
+      - /opt/docker/jellystat/backup-data:/app/backend/backup-data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    ports:
+      - "8097:3000"
+    networks:
+      - media
+    depends_on:
+      - jellystat-db
+
+  # --- HEALTH & MAINTENANCE (AUTOMATED HEALING) ---
+
+  deunhealth:
+    image: qmcgaw/deunhealth:latest
+    container_name: deunhealth
+    restart: unless-stopped
+    network_mode: "none"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - LOG_LEVEL=info
+      - HEALTH_SERVER_ADDRESS=127.0.0.1:9999
+      - TZ=Australia/Sydney
