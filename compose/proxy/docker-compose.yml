@@ -5,7 +5,6 @@ services:
     container_name: nginx-proxy-manager
     restart: unless-stopped
     network_mode: host
-
     volumes:
       - /opt/docker/npm/data:/data
       - /opt/docker/npm/letsencrypt:/etc/letsencrypt

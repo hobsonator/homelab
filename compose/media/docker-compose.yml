@@ -28,7 +28,7 @@ services:
   # --- Behind VPN Network Namespace ---
 
   gluetun:
-    image: qmcgaw/gluetun
+    image: qmcgaw/gluetun:latest
     container_name: gluetun
     restart: unless-stopped
     cap_add:
@@ -53,7 +53,6 @@ services:
       retries: 3
     ports:
       - "8080:8080" # qbittorrent via gluetun
-      - "9696:9696" # prowlarr via gluetun
     networks:
       - media
 
@@ -79,25 +78,29 @@ services:
     image: lscr.io/linuxserver/prowlarr:latest
     container_name: prowlarr
     restart: unless-stopped
-    network_mode: "service:gluetun"
     environment:
       - PUID=1000
       - PGID=1000
       - TZ=Australia/Sydney
+    ports:
+      - "9696:9696"
     volumes:
       - /opt/docker/prowlarr:/config
+    networks:
+      - media
 
   flaresolverr:
     image: ghcr.io/flaresolverr/flaresolverr:latest
     container_name: flaresolverr
     restart: unless-stopped
-    network_mode: "service:gluetun"
     environment:
       - LOG_LEVEL=info
       - LOG_FILE=none
       - LOG_HTML=true
       - CAPTCHA_SOLVER=none
       - TZ=Australia/Sydney
+    networks:
+      - media
 
   gluetun-webui:
     image: scuzza/gluetun-webui:latest

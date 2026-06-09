@@ -1,0 +1,80 @@
+networks:
+  tailscale:
+    name: tailscale_net
+    driver: bridge
+
+services:
+  gluetun:
+    image: qmcgaw/gluetun:latest
+    container_name: gluetun
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    volumes:
+      - /opt/docker/gluetun:/gluetun
+    environment:
+      - LOG_LEVEL=debug
+      - TZ=Australia/Sydney
+      - OPENVPN_USER=${OPENVPN_USER}           # Replace with your PIA username
+      - OPENVPN_PASSWORD=${OPENVPN_PASSWORD}   # Replace with your PIA password
+      - SERVER_REGIONS=New Zealand
+      - HTTP_CONTROL_SERVER_AUTH_DEFAULT_ROLE={"auth":"apikey","apikey":"${GLUETUN_API_KEY}"}
+    healthcheck:
+      test: ping -c 1 www.google.com || exit 1
+      interval: 20s
+      timeout: 10s
+      retries: 3
+    networks:
+      - tailscale
+
+  gluetun-webui:
+    image: scuzza/gluetun-webui:latest
+    container_name: gluetun-ui
+    restart: unless-stopped
+    environment:
+      - GLUETUN_CONTROL_URL=http://gluetun:8000
+      - GLUETUN_API_KEY=${GLUETUN_API_KEY}
+    ports:
+      - "3001:3000"
+    networks:
+      - tailscale
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  tailscale-home:
+    image: tailscale/tailscale:latest
+    container_name: tailscale-home
+    restart: unless-stopped
+    network_mode: host
+    cap_add:
+      - net_admin
+      - net_raw
+    environment:
+      - TS_AUTHKEY=${TAILSCALE_AUTHKEY_HOME}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_EXTRA_ARGS=--advertise-exit-node
+      - TS_ROUTES=${TS_ROUTES}
+    volumes:
+      - /opt/docker/tailscale-home:/var/lib/tailscale
+
+  tailscale-vpn:
+    image: tailscale/tailscale:latest
+    container_name: tailscale-vpn
+    restart: unless-stopped
+    network_mode: "service:gluetun"
+    cap_add:
+      - net_admin
+      - net_raw
+    environment:
+      - TS_AUTHKEY=${TAILSCALE_AUTHKEY_VPN}
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_EXTRA_ARGS=--advertise-exit-node
+    volumes:
+      - /opt/docker/tailscale-vpn:/var/lib/tailscale
