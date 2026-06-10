@@ -9,8 +9,7 @@ services:
     image: jellyfin/jellyfin
     container_name: jellyfin
     restart: unless-stopped
-    environment:
-      - JELLYFIN_PublishedServerUrl=${JELLYFIN_PublishedServerUrl}
+    network_mode: host
     volumes:
      - /opt/docker/jellyfin/config:/config
      - /opt/docker/jellyfin/cache:/cache
@@ -20,10 +19,6 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-    ports:
-      - "8096:8096"
-    networks:
-      - media
 
   # --- Behind VPN Network Namespace ---
 
