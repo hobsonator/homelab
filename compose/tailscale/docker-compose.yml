@@ -1,6 +1,6 @@
 networks:
   tailscale:
-    name: tailscale_net
+    name: tailscale_net 
     driver: bridge
 
 services:
@@ -21,6 +21,7 @@ services:
       - OPENVPN_PASSWORD=${OPENVPN_PASSWORD}   # Replace with your PIA password
       - SERVER_REGIONS=New Zealand
       - HTTP_CONTROL_SERVER_AUTH_DEFAULT_ROLE={"auth":"apikey","apikey":"${GLUETUN_API_KEY}"}
+      - DNS_ADDRESS=94.140.14.14 # AdGuard DNS
     healthcheck:
       test: ping -c 1 www.google.com || exit 1
       interval: 20s
