@@ -27,9 +27,9 @@ services:
       - VERBOSITY=-vv
     volumes:
       # Fail2ban config directory
-      - /opt/docker/f2b/fail2ban-config:/config
+      - /opt/docker/fail2ban/config:/config
       # Fail2ban socket directory (shared with UI)
-      - /opt/docker/f2b/f2b-run:/var/run/fail2ban
+      - /opt/docker/fail2ban/run:/var/run/fail2ban
       # NPM logs mounted where Fail2ban expects them
       - /opt/docker/npm/data/logs:/var/log/npm:ro
 
@@ -44,10 +44,10 @@ services:
       - PORT=3080
     volumes:
       # Fail2ban-UI internal config (SQLite DB, UI settings)
-      - /opt/docker/f2b-ui:/config
+      - /opt/docker/fail2ban-ui:/config
       # NPM logs for logpath validation
       - /opt/docker/npm/data/logs:/var/log/npm:ro
       # Fail2ban config directory (shared)
-      - /opt/docker/f2b/fail2ban-config/fail2ban:/etc/fail2ban
+      - /opt/docker/fail2ban/config/fail2ban:/etc/fail2ban
       # Fail2ban socket directory (shared)
-      - /opt/docker/f2b/f2b-run:/var/run/fail2ban
+      - /opt/docker/fail2ban/run:/var/run/fail2ban
