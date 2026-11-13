@@ -1,0 +1,17 @@
+networks:
+  dockhand:
+    name: dockhand_net 
+    driver: bridge
+
+services:
+  dockhand:
+    image: fnsys/dockhand:latest
+    container_name: dockhand
+    restart: unless-stopped
+    ports:
+      - 3000:3000
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /opt/docker/dockhand:/app/data
+    networks:
+      - dockhand

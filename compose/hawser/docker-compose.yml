@@ -1,0 +1,20 @@
+networks:
+  hawser:
+    name: hawser_net 
+    driver: bridge
+
+services:
+  hawser:
+    image: ghcr.io/finsys/hawser:latest
+    container_name: hawser
+    restart: unless-stopped
+    ports:
+      - "2376:2376"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /opt/docker/hawser:/opt/hawser-stacks
+    environment:
+      - TOKEN=${HAWSER_TOKEN}
+      - STACKS_DIR=/opt/hawser-stacks
+    networks:
+      - hawser
