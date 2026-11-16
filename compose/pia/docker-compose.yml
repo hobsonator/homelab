@@ -1,0 +1,81 @@
+# Dedicated bridge network for the PIA container
+networks:
+  pia:
+    name: pia_net
+    driver: bridge
+
+services:
+  # PIA VPN client container
+  pia:
+    # Build from the Dockerfile in this directory
+    build: .
+    image: pia
+    container_name: pia
+    # Restart on crash/reboot unless manually stopped
+    restart: unless-stopped
+    # Use a tiny init as PID 1 to reap zombie processes and forward signals
+    init: true
+    # Give the VPN time to disconnect and clean up on shutdown
+    stop_grace_period: 20s
+    cap_add:
+      # Needed to manage interfaces, routes and iptables
+      - NET_ADMIN
+      # Needed for process inspection by the PIA daemon/client
+      - SYS_PTRACE
+    devices:
+      # Expose the host TUN device (required for VPN tunnels)
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      # Exit region
+      - PIA_REGION=au-sydney
+      # VPN protocol
+      - PIA_PROTOCOL=wireguard
+      # Request a forwarded port from PIA
+      - PIA_REQUESTPORTFORWARD=true
+      # Run a speed test after connecting
+      - PIA_SPEEDTEST=true
+      # Apply firewall rules before connecting (prevents leaks)
+      - PIA_PREFIREWALL=true   # set false if connecting breaks
+    # Credentials are mounted as a Docker secret, not an env var
+    secrets:
+      - pia_credentials
+    networks:
+      - pia
+    # Container is healthy only while the VPN reports Connected
+    healthcheck:
+      test: ["CMD-SHELL", "piactl get connectionstate | grep -q Connected"]
+      # Check every 30s
+      interval: 30s
+      # Fail a check if it takes longer than 10s
+      timeout: 10s
+      # Mark unhealthy after 3 consecutive failures
+      retries: 3
+      # Grace period for the VPN to connect before failures count
+      start_period: 60s
+    # Rotate logs to stop them growing unbounded
+    logging:
+      driver: json-file
+      options:
+        # Max size per log file
+        max-size: 10m
+        # Keep at most 3 files
+        max-file: "3"
+
+  # Test container that routes all traffic through the PIA container
+  test:
+    image: ubuntu:24.04
+    container_name: pia-test
+    restart: unless-stopped
+    # Share the pia container's network stack (traffic goes via the VPN)
+    network_mode: "service:pia"
+    # Wait until the VPN is connected and healthy before starting
+    depends_on:
+      pia:
+        condition: service_healthy
+    # Keep the container running for manual testing
+    command: sleep infinity
+
+# Secrets definition
+secrets:
+  pia_credentials:
+    file: ./secrets/pia_credentials   # line 1: username, line 2: password

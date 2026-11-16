@@ -1,0 +1,70 @@
+# Base image: minimal Debian 13 (trixie)
+FROM debian:trixie-slim
+
+# Suppress interactive prompts during apt installs (build-time only)
+ARG DEBIAN_FRONTEND=noninteractive
+
+# Install runtime dependencies for the PIA client and helper tools,
+# create a temporary build user, then clean apt lists to keep the layer small
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # TLS root certs for HTTPS
+    ca-certificates \
+    # Needed so the installer (run as non-root) can escalate; removed later
+    sudo \
+    # Timezone data
+    tzdata \
+    # Network diagnostics
+    iputils-ping \
+    curl \
+    # GUI/Qt dependency for the PIA client
+    libxkbcommon-x11-0 \
+    # Netlink libraries (network/interface management)
+    libnl-3-200 \
+    libnl-genl-3-200 \
+    libnl-route-3-200 \
+    # Firewall rules (kill switch / routing)
+    iptables \
+    # Process utilities (killall, etc.)
+    psmisc \
+    # Atomic operations library required by PIA binaries
+    libatomic1 \
+    # Terminal emulator (used by the PIA installer)
+    xterm \
+    # GLib dependency
+    libglib2.0-0t64 \
+    # Modern networking tools (ip, etc.)
+    iproute2 \
+    # Connection speed testing
+    speedtest-cli \
+    && rm -rf /var/lib/apt/lists/* \
+    # Create unprivileged user to run the installer
+    && useradd -m builder \
+    # Grant passwordless sudo (temporary, removed below)
+    && echo 'builder ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/builder
+
+# Stub systemctl: no systemd in a container, so make calls from the installer succeed as no-ops
+RUN printf '#!/bin/sh\nexit 0\n' > /usr/bin/systemctl && \
+    chmod 755 /usr/bin/systemctl
+
+# Run the installer as the non-root user
+USER builder
+
+# Pinned to this exact installer filename (no glob clashes).
+# Bind mount = installer never lands in an image layer.
+# The test fails the build if the PIA daemon wasn't installed.
+RUN --mount=type=bind,source=pia-linux-3.8-08539.run,target=/tmp/pia.run \
+    sh /tmp/pia.run && \
+    test -x /opt/piavpn/bin/pia-daemon
+
+# Switch back to root for cleanup and runtime
+USER root
+
+# Drop builder's passwordless sudo now that install is done
+RUN rm -f /etc/sudoers.d/builder && \
+    SUDO_FORCE_REMOVE=yes apt-get purge -y sudo && apt-get autoremove -y
+
+# Copied last so entrypoint edits don't invalidate the installer layer
+COPY --chmod=755 entrypoint.sh /entrypoint.sh
+
+# Container starts via the custom entrypoint script
+ENTRYPOINT ["/entrypoint.sh"]
